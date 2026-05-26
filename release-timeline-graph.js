@@ -724,23 +724,57 @@ class ReleaseTimelineGraph extends HTMLElement {
 
       const showTip = (e) => {
         const rect = graphBody.getBoundingClientRect();
-        let tx = e.clientX - rect.left + 14;
-        let ty = e.clientY - rect.top  - 14;
 
-        const shortId = r.id ? r.id.substring(0, 8) + '…' : 'Release';
+        const TIP_TYPE_LABELS = {
+          HOTFIX:             'SELECTIVE',
+          RELEASE:            'FULL RELEASE',
+          LAUNCH:             'LAUNCH',
+          DESTROY:            'DESTROY',
+          SCALE_UP:           'SCALE UP',
+          SCALE_DOWN:         'SCALE DOWN',
+          CUSTOM:             'CUSTOM',
+          UNLOCK_STATE:       'UNLOCK STATE',
+          PLAN:               'FULL PLAN',
+          APPLY_PLAN:         'APPLY FULL PLAN',
+          HOTFIX_PLAN:        'SELECTIVE PLAN',
+          APPLY_HOTFIX_PLAN:  'APPLY SELECTIVE PLAN',
+          ROLLBACK_PLAN:      'ROLLBACK PLAN',
+          APPLY_ROLLBACK_PLAN:'APPLY ROLLBACK PLAN',
+          MAINTENANCE:        'MAINTENANCE',
+          TERRAFORM_EXPORT:   'TERRAFORM EXPORT',
+        };
+        const tipTypeLabel   = TIP_TYPE_LABELS[r.releaseType] || r.releaseType;
+        const tipStatusLabel = r.status === 'FAULT' ? 'NO CHANGE' : r.status;
+        const tipTriggered   = (r.triggeredBy === 'Deployer' || !r.triggeredBy) ? 'Bot' : r.triggeredBy;
+        const shortId        = r.id ? r.id.substring(0, 8) + '…' : 'Release';
 
         tooltip.innerHTML = `
           <div class="tip-title">${shortId}</div>
           <div class="tip-row"><span class="tip-lbl">Duration</span><span class="tip-val">${durStr}</span></div>
-          <div class="tip-row"><span class="tip-lbl">Status</span><span class="tip-val">${r.status}</span></div>
-          <div class="tip-row"><span class="tip-lbl">Type</span><span class="tip-val">${r.releaseType}</span></div>
-          <div class="tip-row"><span class="tip-lbl">Triggered</span><span class="tip-val">${r.triggeredBy || '—'}</span></div>
+          <div class="tip-row"><span class="tip-lbl">Status</span><span class="tip-val">${tipStatusLabel}</span></div>
+          <div class="tip-row"><span class="tip-lbl">Type</span><span class="tip-val">${tipTypeLabel}</span></div>
+          <div class="tip-row"><span class="tip-lbl">Triggered</span><span class="tip-val">${tipTriggered}</span></div>
           <div class="tip-row"><span class="tip-lbl">Started</span><span class="tip-val">${new Date(r.createdOn).toLocaleString()}</span></div>
           ${r.finishedOn ? `<div class="tip-row"><span class="tip-lbl">Finished</span><span class="tip-val">${new Date(r.finishedOn).toLocaleString()}</span></div>` : ''}
           ${isSpike ? '<div class="tip-spike">⚠ Spike — exceeds 1.5× average</div>' : ''}
         `;
 
-        // Keep tooltip inside graph body
+        // Smart positioning — flip to opposite side if tooltip would overflow
+        const tipW = tooltip.offsetWidth  || 280;
+        const tipH = tooltip.offsetHeight || 120;
+        const offset = 14;
+        const cursorX = e.clientX - rect.left;
+        const cursorY = e.clientY - rect.top;
+
+        let tx = cursorX + offset;
+        let ty = cursorY - offset;
+
+        if (tx + tipW > rect.width)  tx = cursorX - tipW - offset;
+        if (ty + tipH > rect.height) ty = cursorY - tipH - offset;
+
+        tx = Math.max(0, tx);
+        ty = Math.max(0, ty);
+
         tooltip.style.left = tx + 'px';
         tooltip.style.top  = ty + 'px';
         tooltip.classList.add('show');

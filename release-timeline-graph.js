@@ -427,16 +427,12 @@ class ReleaseTimelineGraph extends HTMLElement {
 
   async fetchProjects() {
     try {
-      const resp = await fetch('/cc-ui/v1/stacks/projects-with-running-environments');
+      const resp = await fetch('/cc-ui/v1/stacks/');
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const data = await resp.json();
 
-      // Handle array or wrapper object
-      const list = Array.isArray(data)
-        ? data
-        : (data.projects || data.stacks || data.content || []);
-
-      this.projects = list;
+      // Response: flat array of stack objects [{ name, label, ... }]
+      this.projects = Array.isArray(data) ? data : [];
       this.populateProjects();
     } catch (err) {
       this.showAlert('error', 'Could not load projects: ' + err.message);
@@ -449,11 +445,10 @@ class ReleaseTimelineGraph extends HTMLElement {
     const sel = this.shadowRoot.getElementById('project-select');
     sel.innerHTML = '<option value="">— Select Project —</option>';
 
-    // Response shape: [{ stack: { name, label, ... }, runningEnvironments: [...] }]
+    // Each item: { name, label, ... }
     this.projects.forEach((p, i) => {
-      const stack = p.stack || p;
-      const name  = stack.name  || `project-${i}`;
-      const label = stack.label || name;
+      const name  = p.name  || `project-${i}`;
+      const label = p.label || name;
       const opt   = document.createElement('option');
       opt.value   = i;
       opt.textContent = label !== name ? `${label} (${name})` : name;
@@ -475,25 +470,39 @@ class ReleaseTimelineGraph extends HTMLElement {
       return;
     }
 
-    this.selectedProject = this.projects[parseInt(idx, 10)];
-
-    // Response shape: { stack: {...}, runningEnvironments: [{ clusterId, clusterName, ... }] }
-    const envs = this.selectedProject.runningEnvironments || [];
-
-    envSel.innerHTML = '<option value="">— Select Environment —</option>';
-    envs.forEach(env => {
-      const id   = env.clusterId || env.id;  // clusterId is the real cluster ID for the API
-      const name = env.clusterName || id;
-      if (!id) return;
-      const opt = document.createElement('option');
-      opt.value = id;
-      opt.textContent = name;
-      envSel.appendChild(opt);
-    });
-
-    envSel.disabled   = false;
-    fetchBtn.disabled = true;
+    this.selectedProject   = this.projects[parseInt(idx, 10)];
     this.selectedClusterId = null;
+    fetchBtn.disabled = true;
+
+    envSel.innerHTML = '<option value="">Loading environments…</option>';
+    envSel.disabled  = true;
+
+    this.fetchEnvironments(this.selectedProject.name);
+  }
+
+  async fetchEnvironments(stackName) {
+    const envSel = this.shadowRoot.getElementById('env-select');
+    try {
+      const resp = await fetch(`/cc-ui/v1/stacks/${stackName}/clusters`);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const data = await resp.json();
+
+      // Response: flat array [{ id, name, stackName, clusterState, ... }]
+      const envs = Array.isArray(data) ? data : [];
+
+      envSel.innerHTML = '<option value="">— Select Environment —</option>';
+      envs.forEach(env => {
+        if (!env.id) return;
+        const opt = document.createElement('option');
+        opt.value = env.id;
+        opt.textContent = env.name || env.id;
+        envSel.appendChild(opt);
+      });
+      envSel.disabled = false;
+    } catch (err) {
+      envSel.innerHTML = '<option value="">Failed to load</option>';
+      this.showAlert('error', 'Could not load environments: ' + err.message);
+    }
   }
 
   onEnvChange() {

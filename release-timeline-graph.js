@@ -759,20 +759,28 @@ class ReleaseTimelineGraph extends HTMLElement {
           ${isSpike ? '<div class="tip-spike">⚠ Spike — exceeds 1.5× average</div>' : ''}
         `;
 
-        // Smart positioning — flip to opposite side if tooltip would overflow
-        const tipW = tooltip.offsetWidth  || 280;
-        const tipH = tooltip.offsetHeight || 120;
+        // Smart positioning — check against viewport so tooltip never gets clipped
+        const tipW   = 288;                           // matches max-width in CSS (+padding)
+        const tipH   = tooltip.scrollHeight || 180;  // scrollHeight works even at opacity:0
         const offset = 14;
         const cursorX = e.clientX - rect.left;
         const cursorY = e.clientY - rect.top;
 
+        // Default: right of and slightly above the cursor
         let tx = cursorX + offset;
         let ty = cursorY - offset;
 
-        if (tx + tipW > rect.width)  tx = cursorX - tipW - offset;
-        if (ty + tipH > rect.height) ty = cursorY - tipH - offset;
+        // Flip left if right edge would overflow viewport
+        if (e.clientX + offset + tipW > window.innerWidth) {
+          tx = cursorX - tipW - offset;
+        }
+        // Flip up if bottom edge would overflow viewport
+        if (e.clientY + tipH > window.innerHeight) {
+          ty = cursorY - tipH - offset;
+        }
 
-        tx = Math.max(0, tx);
+        // Clamp so tooltip never goes off the left or top of the container
+        if (rect.left + tx < 0) tx = -rect.left + 4;
         ty = Math.max(0, ty);
 
         tooltip.style.left = tx + 'px';

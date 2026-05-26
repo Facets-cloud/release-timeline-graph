@@ -449,9 +449,11 @@ class ReleaseTimelineGraph extends HTMLElement {
     const sel = this.shadowRoot.getElementById('project-select');
     sel.innerHTML = '<option value="">— Select Project —</option>';
 
+    // Response shape: [{ stack: { name, label, ... }, runningEnvironments: [...] }]
     this.projects.forEach((p, i) => {
-      const name  = p.name  || p.stackName  || `project-${i}`;
-      const label = p.label || p.displayName || name;
+      const stack = p.stack || p;
+      const name  = stack.name  || `project-${i}`;
+      const label = stack.label || name;
       const opt   = document.createElement('option');
       opt.value   = i;
       opt.textContent = label !== name ? `${label} (${name})` : name;
@@ -475,19 +477,13 @@ class ReleaseTimelineGraph extends HTMLElement {
 
     this.selectedProject = this.projects[parseInt(idx, 10)];
 
-    // The endpoint nests envs under several possible keys
-    const envs = this.selectedProject.environments
-      || this.selectedProject.clusters
-      || this.selectedProject.runningEnvironments
-      || this.selectedProject.clustersOverview
-      || [];
+    // Response shape: { stack: {...}, runningEnvironments: [{ clusterId, clusterName, ... }] }
+    const envs = this.selectedProject.runningEnvironments || [];
 
     envSel.innerHTML = '<option value="">— Select Environment —</option>';
-    envs.forEach(e => {
-      // clustersOverview items wrap the cluster in .cluster
-      const env  = e.cluster || e;
-      const id   = env.id   || env.clusterId;
-      const name = env.name || env.clusterName || id;
+    envs.forEach(env => {
+      const id   = env.clusterId || env.id;  // clusterId is the real cluster ID for the API
+      const name = env.clusterName || id;
       if (!id) return;
       const opt = document.createElement('option');
       opt.value = id;

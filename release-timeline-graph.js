@@ -644,14 +644,14 @@ class ReleaseTimelineGraph extends HTMLElement {
     const xOf = i => pad.left + (valid.length === 1 ? W / 2 : (i / (valid.length - 1)) * W);
     const yOf = v => pad.top + H - ((v - minVal) / (maxVal - minVal || 1)) * H;
 
-    // Adaptive density settings — scale visual weight down as point count grows
-    const n = valid.length;
-    const dotR      = n > 200 ? 2    : n > 100 ? 2.5  : n > 50 ? 3    : 4;
-    const glowR     = n > 200 ? 4.5  : n > 100 ? 6    : n > 50 ? 7.5  : 9;
-    const unR       = n > 200 ? 1.5  : n > 100 ? 2    : n > 50 ? 2.5  : 3;
-    const lineW     = n > 200 ? 1.2  : n > 100 ? 1.5  : n > 50 ? 1.8  : 2.2;
-    const areaAlpha = n > 200 ? 0.03 : n > 100 ? 0.04 : n > 50 ? 0.05 : 0.07;
-    const dotStrokeW = n > 100 ? 1.2 : 1.8;
+    // Spacing-aware density — derive sizes from actual gap between adjacent points
+    const spacing    = valid.length > 1 ? W / (valid.length - 1) : W;
+    const dotR       = Math.min(4,   Math.max(1.5, spacing * 0.38));  // never exceeds half-spacing
+    const glowR      = Math.min(9,   Math.max(4,   spacing * 0.9));
+    const unR        = Math.min(3,   Math.max(1,   spacing * 0.28));
+    const lineW      = Math.min(2.2, Math.max(1,   spacing * 0.22));
+    const areaAlpha  = spacing > 10 ? 0.07 : spacing > 5 ? 0.05 : spacing > 3 ? 0.03 : 0.02;
+    const dotStrokeW = spacing > 6 ? 1.5 : spacing > 3 ? 0.8 : 0;
 
     const NS  = 'http://www.w3.org/2000/svg';
     svg.innerHTML = '';

@@ -4,13 +4,15 @@ class ReleaseTimelineGraph extends HTMLElement {
     this.attachShadow({ mode: 'open' });
 
     this.projects = [];
-    this.releases = [];
+    this.allReleases = [];   // every release in the range — used by graph
+    this.releases = [];      // current page slice — used by table
     this.selectedProject = null;
     this.selectedClusterId = null;
     this.totalPages = 0;
     this.totalElements = 0;
     this.currentPage = 0;
-    this.pageSize = 100;
+    this.pageSize = 50;      // rows per table page (local slice, no extra API calls)
+    this.apiBatchSize = 500; // releases fetched per API call
 
     this.render();
   }
@@ -416,11 +418,13 @@ class ReleaseTimelineGraph extends HTMLElement {
     });
     this.shadowRoot.getElementById('prev-btn').addEventListener('click', () => {
       this.currentPage--;
-      this.fetchReleases();
+      this.sliceTablePage();
+      this.renderTable();
     });
     this.shadowRoot.getElementById('next-btn').addEventListener('click', () => {
       this.currentPage++;
-      this.fetchReleases();
+      this.sliceTablePage();
+      this.renderTable();
     });
   }
 
@@ -517,40 +521,52 @@ class ReleaseTimelineGraph extends HTMLElement {
   async fetchReleases() {
     if (!this.selectedClusterId) return;
 
-    const btn       = this.shadowRoot.getElementById('fetch-btn');
-    const startVal  = this.shadowRoot.getElementById('start-date').value;
-    const endVal    = this.shadowRoot.getElementById('end-date').value;
+    const btn      = this.shadowRoot.getElementById('fetch-btn');
+    const startVal = this.shadowRoot.getElementById('start-date').value;
+    const endVal   = this.shadowRoot.getElementById('end-date').value;
 
     btn.disabled = true;
     btn.innerHTML = '<div class="spinner"></div> Fetching…';
     this.hideAlert();
 
+    const buildParams = (pageNumber) => {
+      const p = new URLSearchParams({ pageNumber, pageSize: this.apiBatchSize });
+      if (startVal) p.set('start', new Date(startVal + 'T00:00:00').toISOString());
+      if (endVal)   p.set('end',   new Date(endVal   + 'T23:59:59').toISOString());
+      return p;
+    };
+
     try {
-      const params = new URLSearchParams({
-        pageNumber: this.currentPage,
-        pageSize:   this.pageSize,
-      });
-
-      if (startVal) {
-        params.set('start', new Date(startVal + 'T00:00:00').toISOString());
-      }
-      if (endVal) {
-        const e = new Date(endVal + 'T23:59:59');
-        params.set('end', e.toISOString());
-      }
-
-      const resp = await fetch(
-        `/cc-ui/v1/clusters/${this.selectedClusterId}/deployments/search?${params}`
+      // Fetch page 0 first to discover totalPages
+      const firstResp = await fetch(
+        `/cc-ui/v1/clusters/${this.selectedClusterId}/deployments/search?${buildParams(0)}`
       );
-      if (!resp.ok) throw new Error('API error ' + resp.status);
+      if (!firstResp.ok) throw new Error('API error ' + firstResp.status);
+      const firstData = await firstResp.json();
 
-      const data    = await resp.json();
-      const content = data.content || [];
+      let allContent = firstData.content || [];
+      const apiTotalPages = firstData.totalPages || 1;
 
-      this.releases      = content.map(item => this.parseDeployment(item));
-      this.totalPages    = data.totalPages   || 1;
-      this.totalElements = data.totalElements || content.length;
+      // Fetch any remaining pages concurrently
+      if (apiTotalPages > 1) {
+        const rest = await Promise.all(
+          Array.from({ length: apiTotalPages - 1 }, (_, i) =>
+            fetch(`/cc-ui/v1/clusters/${this.selectedClusterId}/deployments/search?${buildParams(i + 1)}`)
+              .then(r => r.ok ? r.json() : Promise.reject('API error ' + r.status))
+          )
+        );
+        rest.forEach(d => { allContent = allContent.concat(d.content || []); });
+      }
 
+      // Sort chronologically and store all for graph
+      this.allReleases   = allContent
+        .map(item => this.parseDeployment(item))
+        .sort((a, b) => new Date(a.createdOn) - new Date(b.createdOn));
+      this.totalElements = this.allReleases.length;
+      this.currentPage   = 0;
+      this.totalPages    = Math.ceil(this.totalElements / this.pageSize) || 1;
+
+      this.sliceTablePage();
       this.renderGraph();
       this.renderTable();
 
@@ -560,6 +576,11 @@ class ReleaseTimelineGraph extends HTMLElement {
       btn.disabled    = false;
       btn.textContent = 'Fetch Releases';
     }
+  }
+
+  sliceTablePage() {
+    const start = this.currentPage * this.pageSize;
+    this.releases = this.allReleases.slice(start, start + this.pageSize);
   }
 
   parseDeployment(item) {
@@ -590,10 +611,9 @@ class ReleaseTimelineGraph extends HTMLElement {
     const empty     = this.shadowRoot.getElementById('empty-graph');
     const legend    = this.shadowRoot.getElementById('legend');
 
-    // Only plot releases that have time data
-    const valid = this.releases
-      .filter(r => r.timeTakenInSeconds != null && r.createdOn)
-      .sort((a, b) => new Date(a.createdOn) - new Date(b.createdOn));
+    // Plot ALL fetched releases (already sorted); filter to those with timing data
+    const valid = this.allReleases
+      .filter(r => r.timeTakenInSeconds != null && r.createdOn);
 
     if (valid.length === 0) {
       svg.style.display   = 'none';

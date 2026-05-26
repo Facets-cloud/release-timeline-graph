@@ -227,6 +227,13 @@ class ReleaseTimelineGraph extends HTMLElement {
 
         tbody tr:last-child td { border-bottom: none; }
         tbody tr:hover { background: #f9fafb; }
+        @keyframes row-flash {
+          0%   { background: transparent; }
+          20%  { background: rgba(244,67,54,0.12); }
+          60%  { background: rgba(244,67,54,0.07); }
+          100% { background: transparent; }
+        }
+        .row-highlight { animation: row-flash 1.4s ease-out; }
 
         .mono {
           font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace;
@@ -824,6 +831,9 @@ class ReleaseTimelineGraph extends HTMLElement {
       hit.addEventListener('mouseenter', showTip);
       hit.addEventListener('mousemove',  showTip);
       hit.addEventListener('mouseleave', () => tooltip.classList.remove('show'));
+      if (isSpike) {
+        hit.addEventListener('click', () => this.navigateToTableRow(r));
+      }
     });
   }
 
@@ -891,6 +901,7 @@ class ReleaseTimelineGraph extends HTMLElement {
       const typeLabel = TYPE_LABELS[r.releaseType] || r.releaseType;
 
       const tr = document.createElement('tr');
+      tr.dataset.releaseId = r.id || '';
       tr.innerHTML = `
         <td><span class="mono">${releaseId}</span></td>
         <td>${triggeredBy}</td>
@@ -916,6 +927,33 @@ class ReleaseTimelineGraph extends HTMLElement {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
+
+  navigateToTableRow(release) {
+    // Find the page that contains this release and switch to it
+    const idx = this.allReleases.findIndex(r => r.id === release.id);
+    if (idx === -1) return;
+
+    const targetPage = Math.floor(idx / this.pageSize);
+    if (targetPage !== this.currentPage) {
+      this.currentPage = targetPage;
+      this.sliceTablePage();
+      this.renderTable();
+    }
+
+    // After the DOM update, scroll to the row and flash it
+    requestAnimationFrame(() => this.flashTableRow(release.id));
+  }
+
+  flashTableRow(releaseId) {
+    const row = this.shadowRoot.querySelector(`tr[data-release-id="${releaseId}"]`);
+    if (!row) return;
+    row.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    row.classList.remove('row-highlight');
+    // Force reflow so re-adding the class always restarts the animation
+    void row.offsetWidth;
+    row.classList.add('row-highlight');
+    setTimeout(() => row.classList.remove('row-highlight'), 1500);
+  }
 
   openInPraxis(release) {
     const projectName = this.selectedProjectName || '';

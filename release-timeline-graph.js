@@ -462,16 +462,18 @@ class ReleaseTimelineGraph extends HTMLElement {
     const fetchBtn = this.shadowRoot.getElementById('fetch-btn');
 
     if (idx === '') {
-      this.selectedProject   = null;
-      this.selectedClusterId = null;
+      this.selectedProject     = null;
+      this.selectedProjectName = null;
+      this.selectedClusterId   = null;
       envSel.innerHTML = '<option value="">Select project first</option>';
       envSel.disabled  = true;
       fetchBtn.disabled = true;
       return;
     }
 
-    this.selectedProject   = this.projects[parseInt(idx, 10)];
-    this.selectedClusterId = null;
+    this.selectedProject     = this.projects[parseInt(idx, 10)];
+    this.selectedProjectName = this.selectedProject.name;
+    this.selectedClusterId   = null;
     fetchBtn.disabled = true;
 
     envSel.innerHTML = '<option value="">Loading environments…</option>';
@@ -798,12 +800,9 @@ class ReleaseTimelineGraph extends HTMLElement {
         <td><span class="type-badge">${r.releaseType}</span></td>
         <td>${duration}</td>
         <td>${startedAt}</td>
-        <td>
-          <a class="praxis-btn" href="/ui/ai/agent/praxis/session/" target="_blank">
-            Open in Praxis →
-          </a>
-        </td>
+        <td><button class="praxis-btn">Open in Praxis →</button></td>
       `;
+      tr.querySelector('.praxis-btn').addEventListener('click', () => this.openInPraxis(r));
       tbody.appendChild(tr);
     });
 
@@ -819,6 +818,30 @@ class ReleaseTimelineGraph extends HTMLElement {
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────
+
+  openInPraxis(release) {
+    const projectName = this.selectedProjectName || '';
+    const clusterId   = this.selectedClusterId   || '';
+
+    const releaseURL = `${window.location.origin}/projects/${projectName}/environments/${clusterId}/releases?detailId=${release.id}`;
+
+    const PLAN_TYPES = ['PLAN', 'HOTFIX_PLAN', 'ROLLBACK_PLAN'];
+    let message = '';
+    if (release.status === 'FAILED') {
+      message = `I want to debug this release: ${releaseURL}`;
+    } else if (release.status === 'SUCCEEDED') {
+      message = PLAN_TYPES.includes(release.releaseType)
+        ? `I want to understand the plan details for this release: ${releaseURL}`
+        : `Explain what has changed in this release: ${releaseURL}`;
+    }
+
+    const origin = window.location.hostname === 'localhost'
+      ? 'https://facetsdemo.console.facets.cloud'
+      : window.location.origin;
+
+    const params = new URLSearchParams({ initial_message: message });
+    window.open(`${origin}/ui/ai/agent/praxis?${params.toString()}`, '_blank', 'noopener,noreferrer');
+  }
 
   showAlert(type, msg) {
     const el = this.shadowRoot.getElementById('alert');

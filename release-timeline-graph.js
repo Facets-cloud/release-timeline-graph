@@ -364,6 +364,9 @@ class ReleaseTimelineGraph extends HTMLElement {
                 <div class="legend-dot" style="background:#f44336;"></div> Spike (&gt;1.5× avg)
               </div>
               <div class="legend-item">
+                <div class="legend-dot" style="background:white;border:1.5px solid #bbb;"></div> No timing
+              </div>
+              <div class="legend-item">
                 <div class="legend-line"></div> Average
               </div>
             </div>
@@ -611,14 +614,13 @@ class ReleaseTimelineGraph extends HTMLElement {
     const empty     = this.shadowRoot.getElementById('empty-graph');
     const legend    = this.shadowRoot.getElementById('legend');
 
-    // Plot ALL fetched releases (already sorted); filter to those with timing data
-    const valid = this.allReleases
-      .filter(r => r.timeTakenInSeconds != null && r.createdOn);
+    // All releases with a date — never filter out untimed entries
+    const valid = this.allReleases.filter(r => r.createdOn);
 
     if (valid.length === 0) {
-      svg.style.display   = 'none';
-      empty.style.display = 'flex';
-      empty.textContent   = 'No release data with timing information for the selected range.';
+      svg.style.display    = 'none';
+      empty.style.display  = 'flex';
+      empty.textContent    = 'No release data for the selected range.';
       legend.style.display = 'none';
       return;
     }
@@ -632,30 +634,29 @@ class ReleaseTimelineGraph extends HTMLElement {
     const W   = VW - pad.left - pad.right;
     const H   = VH - pad.top  - pad.bottom;
 
-    const minutes = valid.map(r => r.timeTakenInSeconds / 60);
-    const avg     = minutes.reduce((a, b) => a + b, 0) / minutes.length;
-    const maxVal  = Math.max(...minutes) * 1.12;
-    const minVal  = 0;
+    // minutes[i] is null when the release has no timing data
+    const minutes    = valid.map(r => r.timeTakenInSeconds != null ? r.timeTakenInSeconds / 60 : null);
+    const timedMins  = minutes.filter(m => m != null);
+    const avg        = timedMins.length > 0 ? timedMins.reduce((a, b) => a + b, 0) / timedMins.length : 0;
+    const maxVal     = timedMins.length > 0 ? Math.max(...timedMins) * 1.12 : 1;
+    const minVal     = 0;
 
-    const xOf = i  => pad.left + (valid.length === 1 ? W / 2 : (i / (valid.length - 1)) * W);
-    const yOf = v  => pad.top  + H - ((v - minVal) / (maxVal - minVal || 1)) * H;
+    const xOf = i => pad.left + (valid.length === 1 ? W / 2 : (i / (valid.length - 1)) * W);
+    const yOf = v => pad.top + H - ((v - minVal) / (maxVal - minVal || 1)) * H;
 
-    const NS = 'http://www.w3.org/2000/svg';
+    const NS  = 'http://www.w3.org/2000/svg';
     svg.innerHTML = '';
-
-    const mk = tag => document.createElementNS(NS, tag);
+    const mk  = tag    => document.createElementNS(NS, tag);
     const set = (el, attrs) => { Object.entries(attrs).forEach(([k, v]) => el.setAttribute(k, v)); return el; };
-    const ap  = el => { svg.appendChild(el); return el; };
+    const ap  = el     => { svg.appendChild(el); return el; };
 
     // ── Grid lines & Y-axis labels
     const yTicks = 5;
     for (let i = 0; i <= yTicks; i++) {
       const val = minVal + (maxVal - minVal) * (i / yTicks);
       const y   = yOf(val);
-
       ap(set(mk('line'), { x1: pad.left, x2: pad.left + W, y1: y, y2: y,
         stroke: i === 0 ? '#bbb' : '#eeeff2', 'stroke-width': 1 }));
-
       const label = val >= 60 ? `${(val / 60).toFixed(1)}h` : `${Math.round(val)}m`;
       const t = ap(set(mk('text'), { x: pad.left - 8, y: y + 4,
         'text-anchor': 'end', 'font-size': 11, fill: '#999' }));
@@ -664,80 +665,86 @@ class ReleaseTimelineGraph extends HTMLElement {
 
     // ── Y-axis title
     const yTitle = ap(set(mk('text'), {
-      x: -(pad.top + H / 2), y: 14,
-      transform: 'rotate(-90)',
+      x: -(pad.top + H / 2), y: 14, transform: 'rotate(-90)',
       'text-anchor': 'middle', 'font-size': 11, fill: '#aaa'
     }));
     yTitle.textContent = 'Duration (minutes)';
 
-    // ── Area fill
-    const areaPoints =
-      `${xOf(0)},${pad.top + H} ` +
-      valid.map((_, i) => `${xOf(i)},${yOf(minutes[i])}`).join(' ') +
-      ` ${xOf(valid.length - 1)},${pad.top + H}`;
-    ap(set(mk('polygon'), { points: areaPoints, fill: 'rgba(0,119,204,0.07)' }));
+    // ── Area fill & line (timed entries only — don't distort with 0s)
+    const timedPts = valid
+      .map((_, i) => minutes[i] != null ? `${xOf(i)},${yOf(minutes[i])}` : null)
+      .filter(Boolean);
 
-    // ── Line
-    const linePoints = valid.map((_, i) => `${xOf(i)},${yOf(minutes[i])}`).join(' ');
-    ap(set(mk('polyline'), {
-      points: linePoints, fill: 'none',
-      stroke: '#0077cc', 'stroke-width': 2.2, 'stroke-linejoin': 'round'
-    }));
+    if (timedPts.length > 0) {
+      const firstX = timedPts[0].split(',')[0];
+      const lastX  = timedPts[timedPts.length - 1].split(',')[0];
+      ap(set(mk('polygon'), {
+        points: `${firstX},${pad.top + H} ${timedPts.join(' ')} ${lastX},${pad.top + H}`,
+        fill: 'rgba(0,119,204,0.07)'
+      }));
+      ap(set(mk('polyline'), {
+        points: timedPts.join(' '), fill: 'none',
+        stroke: '#0077cc', 'stroke-width': 2.2, 'stroke-linejoin': 'round'
+      }));
+    }
 
-    // ── Average line
-    const avgY = yOf(avg);
-    ap(set(mk('line'), {
-      x1: pad.left, x2: pad.left + W, y1: avgY, y2: avgY,
-      stroke: '#ff9800', 'stroke-width': 1.8, 'stroke-dasharray': '7,4'
-    }));
-    const avgTxt = ap(set(mk('text'), {
-      x: pad.left + W + 4, y: avgY + 4,
-      'font-size': 10, fill: '#ff9800', 'font-weight': 600
-    }));
-    avgTxt.textContent = `Avg: ${avg >= 60 ? (avg / 60).toFixed(1) + 'h' : Math.round(avg) + 'm'}`;
+    // ── Average line (timed only)
+    if (timedMins.length > 0) {
+      const avgY = yOf(avg);
+      ap(set(mk('line'), {
+        x1: pad.left, x2: pad.left + W, y1: avgY, y2: avgY,
+        stroke: '#ff9800', 'stroke-width': 1.8, 'stroke-dasharray': '7,4'
+      }));
+      const avgTxt = ap(set(mk('text'), {
+        x: pad.left + W + 4, y: avgY + 4, 'font-size': 10, fill: '#ff9800', 'font-weight': 600
+      }));
+      avgTxt.textContent = `Avg: ${avg >= 60 ? (avg / 60).toFixed(1) + 'h' : Math.round(avg) + 'm'}`;
+    }
 
     // ── X-axis labels (max 9)
     const labelStep = Math.max(1, Math.floor(valid.length / 9));
     valid.forEach((r, i) => {
       if (i % labelStep !== 0 && i !== valid.length - 1) return;
-      const x   = xOf(i);
-      const d   = new Date(r.createdOn);
+      const x = xOf(i);
+      const d = new Date(r.createdOn);
       const lbl = `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2,'0')}`;
-
       ap(set(mk('line'), { x1: x, x2: x, y1: pad.top + H, y2: pad.top + H + 4,
         stroke: '#ccc', 'stroke-width': 1 }));
-
-      const xt = ap(set(mk('text'), {
-        x, y: pad.top + H + 15,
-        'text-anchor': 'middle', 'font-size': 10, fill: '#aaa'
-      }));
+      const xt = ap(set(mk('text'), { x, y: pad.top + H + 15,
+        'text-anchor': 'middle', 'font-size': 10, fill: '#aaa' }));
       xt.textContent = lbl;
     });
 
-    // ── Data points
-    const tooltip    = this.shadowRoot.getElementById('tooltip');
-    const graphBody  = this.shadowRoot.getElementById('graph-body');
+    // ── Data points (ALL entries — untimed shown as hollow gray dots at baseline)
+    const tooltip   = this.shadowRoot.getElementById('tooltip');
+    const graphBody = this.shadowRoot.getElementById('graph-body');
 
     valid.forEach((r, i) => {
-      const cx      = xOf(i);
-      const cy      = yOf(minutes[i]);
-      const isSpike = minutes[i] > avg * 1.5;
+      const hasTiming = minutes[i] != null;
+      const m         = hasTiming ? minutes[i] : 0;
+      const cx        = xOf(i);
+      const cy        = hasTiming ? yOf(m) : pad.top + H;   // untimed → sit on baseline
+      const isSpike   = hasTiming && m > avg * 1.5;
 
-      const durStr = minutes[i] >= 60
-        ? `${(minutes[i] / 60).toFixed(2)} hrs`
-        : `${Math.round(minutes[i])} min`;
+      const durStr = !hasTiming
+        ? '—'
+        : m >= 60 ? `${(m / 60).toFixed(2)} hrs` : `${Math.round(m)} min`;
 
-      // Spike glow
-      if (isSpike) {
-        ap(set(mk('circle'), { cx, cy, r: 11, fill: 'rgba(244,67,54,0.18)' }));
+      if (!hasTiming) {
+        // Hollow gray dot at baseline — release has no timing data
+        ap(set(mk('circle'), { cx, cy, r: 4.5, fill: 'white', stroke: '#bbb', 'stroke-width': 1.5 }));
+      } else {
+        // Spike glow
+        if (isSpike) {
+          ap(set(mk('circle'), { cx, cy, r: 11, fill: 'rgba(244,67,54,0.18)' }));
+        }
+        // Timed dot
+        ap(set(mk('circle'), {
+          cx, cy, r: 5.5,
+          fill:   isSpike ? '#f44336' : '#0077cc',
+          stroke: 'white', 'stroke-width': 2
+        }));
       }
-
-      // Visible dot
-      ap(set(mk('circle'), {
-        cx, cy, r: 5.5,
-        fill:   isSpike ? '#f44336' : '#0077cc',
-        stroke: 'white', 'stroke-width': 2
-      }));
 
       // Invisible large hit area
       const hit = ap(set(mk('circle'), { cx, cy, r: 14, fill: 'transparent', style: 'cursor:pointer' }));

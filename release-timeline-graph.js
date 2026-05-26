@@ -228,11 +228,12 @@ class ReleaseTimelineGraph extends HTMLElement {
 
         .mono {
           font-family: 'SFMono-Regular', Consolas, 'Courier New', monospace;
-          font-size: 0.76rem;
+          font-size: 0.74rem;
           background: #f0f4f8;
           color: #555;
           padding: 0.15rem 0.4rem;
           border-radius: 4px;
+          word-break: break-all;
         }
 
         .badge {
@@ -788,16 +789,21 @@ class ReleaseTimelineGraph extends HTMLElement {
       const statusKey = r.status || 'default';
       const knownStatuses = ['SUCCEEDED','FAILED','FAULT','IN_PROGRESS','STARTED',
         'ABORTED','TIMED_OUT','QUEUED','PENDING_APPROVAL','REJECTED'];
-      const statusClass = knownStatuses.includes(statusKey) ? `s-${statusKey}` : 's-default';
+      const statusClass   = knownStatuses.includes(statusKey) ? `s-${statusKey}` : 's-default';
+      const statusLabel   = r.status === 'FAULT' ? 'NO CHANGE' : r.status;
 
-      const shortId = r.id ? r.id.substring(0, 12) : 'N/A';
+      const releaseId     = r.id || 'N/A';
+      const triggeredBy   = (r.triggeredBy === 'Deployer' || !r.triggeredBy) ? 'Bot' : r.triggeredBy;
+
+      const TYPE_LABELS   = { HOTFIX: 'Selective', RELEASE: 'Full Release' };
+      const typeLabel     = TYPE_LABELS[r.releaseType] || r.releaseType;
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
-        <td><span class="mono" title="${r.id}">${shortId}</span></td>
-        <td>${r.triggeredBy || '—'}</td>
-        <td><span class="badge ${statusClass}">${r.status}</span></td>
-        <td><span class="type-badge">${r.releaseType}</span></td>
+        <td><span class="mono">${releaseId}</span></td>
+        <td>${triggeredBy}</td>
+        <td><span class="badge ${statusClass}">${statusLabel}</span></td>
+        <td><span class="type-badge">${typeLabel}</span></td>
         <td>${duration}</td>
         <td>${startedAt}</td>
         <td><button class="praxis-btn">Open in Praxis →</button></td>

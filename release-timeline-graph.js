@@ -644,6 +644,15 @@ class ReleaseTimelineGraph extends HTMLElement {
     const xOf = i => pad.left + (valid.length === 1 ? W / 2 : (i / (valid.length - 1)) * W);
     const yOf = v => pad.top + H - ((v - minVal) / (maxVal - minVal || 1)) * H;
 
+    // Adaptive density settings — scale visual weight down as point count grows
+    const n = valid.length;
+    const dotR      = n > 200 ? 2    : n > 100 ? 2.5  : n > 50 ? 3    : 4;
+    const glowR     = n > 200 ? 4.5  : n > 100 ? 6    : n > 50 ? 7.5  : 9;
+    const unR       = n > 200 ? 1.5  : n > 100 ? 2    : n > 50 ? 2.5  : 3;
+    const lineW     = n > 200 ? 1.2  : n > 100 ? 1.5  : n > 50 ? 1.8  : 2.2;
+    const areaAlpha = n > 200 ? 0.03 : n > 100 ? 0.04 : n > 50 ? 0.05 : 0.07;
+    const dotStrokeW = n > 100 ? 1.2 : 1.8;
+
     const NS  = 'http://www.w3.org/2000/svg';
     svg.innerHTML = '';
     const mk  = tag    => document.createElementNS(NS, tag);
@@ -680,11 +689,11 @@ class ReleaseTimelineGraph extends HTMLElement {
       const lastX  = timedPts[timedPts.length - 1].split(',')[0];
       ap(set(mk('polygon'), {
         points: `${firstX},${pad.top + H} ${timedPts.join(' ')} ${lastX},${pad.top + H}`,
-        fill: 'rgba(0,119,204,0.07)'
+        fill: `rgba(0,119,204,${areaAlpha})`
       }));
       ap(set(mk('polyline'), {
         points: timedPts.join(' '), fill: 'none',
-        stroke: '#0077cc', 'stroke-width': 2.2, 'stroke-linejoin': 'round'
+        stroke: '#0077cc', 'stroke-width': lineW, 'stroke-linejoin': 'round'
       }));
     }
 
@@ -731,23 +740,20 @@ class ReleaseTimelineGraph extends HTMLElement {
         : m >= 60 ? `${(m / 60).toFixed(2)} hrs` : `${Math.round(m)} min`;
 
       if (!hasTiming) {
-        // Hollow gray dot at baseline — release has no timing data
-        ap(set(mk('circle'), { cx, cy, r: 4.5, fill: 'white', stroke: '#bbb', 'stroke-width': 1.5 }));
+        ap(set(mk('circle'), { cx, cy, r: unR, fill: 'white', stroke: '#ccc', 'stroke-width': 1 }));
       } else {
-        // Spike glow
         if (isSpike) {
-          ap(set(mk('circle'), { cx, cy, r: 11, fill: 'rgba(244,67,54,0.18)' }));
+          ap(set(mk('circle'), { cx, cy, r: glowR, fill: 'rgba(244,67,54,0.15)' }));
         }
-        // Timed dot
         ap(set(mk('circle'), {
-          cx, cy, r: 5.5,
+          cx, cy, r: dotR,
           fill:   isSpike ? '#f44336' : '#0077cc',
-          stroke: 'white', 'stroke-width': 2
+          stroke: 'white', 'stroke-width': dotStrokeW
         }));
       }
 
-      // Invisible large hit area
-      const hit = ap(set(mk('circle'), { cx, cy, r: 14, fill: 'transparent', style: 'cursor:pointer' }));
+      // Hit area stays large enough to hover comfortably
+      const hit = ap(set(mk('circle'), { cx, cy, r: Math.max(dotR + 6, 10), fill: 'transparent', style: 'cursor:pointer' }));
 
       const showTip = (e) => {
         const rect = graphBody.getBoundingClientRect();

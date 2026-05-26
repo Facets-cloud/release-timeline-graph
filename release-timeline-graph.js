@@ -795,8 +795,25 @@ class ReleaseTimelineGraph extends HTMLElement {
       const releaseId     = r.id || 'N/A';
       const triggeredBy   = (r.triggeredBy === 'Deployer' || !r.triggeredBy) ? 'Bot' : r.triggeredBy;
 
-      const TYPE_LABELS   = { HOTFIX: 'Selective', RELEASE: 'Full Release' };
-      const typeLabel     = TYPE_LABELS[r.releaseType] || r.releaseType;
+      const TYPE_LABELS = {
+        HOTFIX:             'SELECTIVE',
+        RELEASE:            'FULL RELEASE',
+        LAUNCH:             'LAUNCH',
+        DESTROY:            'DESTROY',
+        SCALE_UP:           'SCALE UP',
+        SCALE_DOWN:         'SCALE DOWN',
+        CUSTOM:             'CUSTOM',
+        UNLOCK_STATE:       'UNLOCK STATE',
+        PLAN:               'FULL PLAN',
+        APPLY_PLAN:         'APPLY FULL PLAN',
+        HOTFIX_PLAN:        'SELECTIVE PLAN',
+        APPLY_HOTFIX_PLAN:  'APPLY SELECTIVE PLAN',
+        ROLLBACK_PLAN:      'ROLLBACK PLAN',
+        APPLY_ROLLBACK_PLAN:'APPLY ROLLBACK PLAN',
+        MAINTENANCE:        'MAINTENANCE',
+        TERRAFORM_EXPORT:   'TERRAFORM EXPORT',
+      };
+      const typeLabel = TYPE_LABELS[r.releaseType] || r.releaseType;
 
       const tr = document.createElement('tr');
       tr.innerHTML = `
